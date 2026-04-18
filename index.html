@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -96,21 +96,24 @@
 </head>
 <body>
 <div class="container">
-    <h1>⚡ TRES EN LÍNEA 1vs1</h1>    <div class="estado" id="estado">🔄 Conectando...</div>
+    <h1>TRES EN LÍNEA 1vs1</h1>    <div class="estado" id="estado">Conectando...</div>
     <div class="tablero" id="tablero"></div>
-    <button id="reiniciar">🔄 Reiniciar partida</button>
-    <div class="footer">🎮 Solo dos jugadores - Tiempo real con Supabase</div>
-    <div class="logs-area" id="logsPanel"><div class="log-entry">📡 Iniciando juego...</div></div>
+    <button id="reiniciar">Reiniciar partida</button>
+    <div class="footer">Solo dos jugadores - Tiempo real con Supabase</div>
+    <div class="logs-area" id="logsPanel"><div class="log-entry">Iniciando juego...</div></div>
 </div>
 
 <script type="module">
     import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-    // ===== CONFIGURACIÓN =====
+    // ===== CONFIGURACION =====
     const supabaseUrl = 'https://vkylxedxgcxrxfezmaau.supabase.co';
     const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreWx4ZWR4Z2N4cnhmZXptYWF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1Mjg1NTcsImV4cCI6MjA5MjEwNDU1N30.QLAB88lwIAwc0IZ2bOwF8cw3QBkcidW9zac7LCvaMiw';
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const GAME_ID = 1;
+    const SESSION_KEY = "tres_en_linea_session_id";
+    const miSessionId = localStorage.getItem(SESSION_KEY) || (Math.random().toString(36).slice(2) + Date.now().toString(36));
+    localStorage.setItem(SESSION_KEY, miSessionId);
 
     // Estado del juego
     let miSimbolo = null;
@@ -146,7 +149,7 @@
             celda.textContent = "";
             celda.addEventListener("click", () => hacerMovimiento(i));
             tableroDiv.appendChild(celda);        }
-        addLog("✅ Tablero visual creado", "success");
+        addLog("Tablero visual creado", "success");
     }
 
     // Actualizar vista del tablero
@@ -179,22 +182,21 @@
     // Actualizar estado en pantalla
     function actualizarEstado(ganador = null) {
         if (ganador === 'empate') {
-            estadoSpan.textContent = "🤝 ¡Empate! Reinicia.";
+            estadoSpan.textContent = "Empate. Reinicia.";
         } else if (ganador) {
-            estadoSpan.textContent = `🏆 Ganó ${ganador}`;
+            estadoSpan.textContent = `Gano ${ganador}`;
         } else if (miSimbolo === null) {
-            estadoSpan.textContent = "👀 Espectador";
+            estadoSpan.textContent = "Espectador";
         } else if (miSimbolo === turnoActual) {
-            estadoSpan.textContent = "🎯 Tu turno";
+            estadoSpan.textContent = "Tu turno";
         } else {
-            estadoSpan.textContent = `⏳ Turno de ${turnoActual}`;
+            estadoSpan.textContent = `Turno de ${turnoActual}`;
         }
     }
 
-    // ✅ FUNCIÓN CORREGIDA: Asignación atómica de símbolos
+    // FUNCION CORREGIDA: Asignacion atomica de simbolos
     async function asignarSimbolo() {
-        addLog("🔍 Asignando símbolo...", "info");
-                const sessionId = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        addLog("Asignando simbolo...", "info");
         let asignado = false;
         let intentos = 0;
         const maxIntentos = 3;
@@ -205,46 +207,48 @@
             // Intentar obtener X primero (solo si x_player_id es NULL)
             const { data: updateX, error: errorX } = await supabase
                 .from('juegos')
-                .update({ x_player_id: sessionId })
+                .update({ x_player_id: miSessionId })
                 .eq('id', GAME_ID)
-                .is('x_player_id', null);
+                .is('x_player_id', null)
+                .select('id');
                 
-            if (!errorX && updateX.length > 0) {
-                // ✅ Logré asignarme como X
+            if (!errorX && Array.isArray(updateX) && updateX.length > 0) {
+                // Logre asignarme como X
                 miSimbolo = 'X';
                 asignado = true;
-                addLog(`🎮 Eres X (intento ${intentos})`, "success");
+                addLog(`Eres X (intento ${intentos})`, "success");
                 continue;
             }
             
             // Si no pude obtener X, intentar obtener O (solo si o_player_id es NULL)
             const { data: updateO, error: errorO } = await supabase
                 .from('juegos')
-                .update({ o_player_id: sessionId })
+                .update({ o_player_id: miSessionId })
                 .eq('id', GAME_ID)
-                .is('o_player_id', null);
+                .is('o_player_id', null)
+                .select('id');
                 
-            if (!errorO && updateO.length > 0) {
-                // ✅ Logré asignarme como O
+            if (!errorO && Array.isArray(updateO) && updateO.length > 0) {
+                // Logre asignarme como O
                 miSimbolo = 'O';
                 asignado = true;
-                addLog(`🎮 Eres O (intento ${intentos})`, "success");
+                addLog(`Eres O (intento ${intentos})`, "success");
                 continue;
             }
             
-            // Si llegamos aquí, ambos están ocupados
+            // Si llegamos aqui, ambos estan ocupados
             if (!errorX && !errorO) {
                 miSimbolo = null;
                 asignado = true;
-                addLog(`👀 Partida llena. Modo espectador.`, "info");
+                addLog(`Partida llena. Modo espectador.`, "info");
             } else {
                 // Error de red, esperar y reintentar
-                addLog(`⚠️ Reintentando... (${intentos}/${maxIntentos})`, "info");
+                addLog(`Reintentando... (${intentos}/${maxIntentos})`, "info");
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
         }
                 if (!asignado) {
-            addLog(`❌ No se pudo unir a la partida`, "error");
+            addLog(`No se pudo unir a la partida`, "error");
             miSimbolo = null;
         }
         
@@ -261,9 +265,9 @@
                 .single();
                 
             if (game) {
-                const jugadorX = game.x_player_id ? '🟢' : '⚪';
-                const jugadorO = game.o_player_id ? '🟢' : '⚪';
-                addLog(`👥 Jugadores: X ${jugadorX} | O ${jugadorO}`, "info");
+                const jugadorX = game.x_player_id ? "SI" : "NO";
+                const jugadorO = game.o_player_id ? "SI" : "NO";
+                addLog(`Jugadores: X ${jugadorX} | O ${jugadorO}`, "info");
             }
         }, 5000);
     }
@@ -271,15 +275,15 @@
     // Enviar movimiento a Supabase
     async function hacerMovimiento(indice) {
         if (juegoTerminado) {
-            addLog("⛔ Partida terminada. Reinicia.", "error");
+            addLog("Partida terminada. Reinicia.", "error");
             return;
         }
         if (miSimbolo !== turnoActual) {
-            addLog(`🙅 No es tu turno`, "error");
+            addLog(`No es tu turno`, "error");
             return;
         }
         if (tableroLocal[indice] !== "") {
-            addLog("❌ Casilla ocupada", "error");
+            addLog("Casilla ocupada", "error");
             return;
         }
 
@@ -294,14 +298,14 @@
         if (ganador) {
             siguienteTurno = null;            activo = false;
             juegoTerminado = true;
-            addLog(`🏆 ${ganador} ha ganado!`, "success");
+            addLog(`${ganador} ha ganado!`, "success");
         } else {
             turnoActual = siguienteTurno;
         }
         
         actualizarEstado(ganador);
 
-        addLog(`📤 Enviando ${miSimbolo} en casilla ${indice}`, "info");
+        addLog(`Enviando ${miSimbolo} en casilla ${indice}`, "info");
         
         const { error } = await supabase
             .from('juegos')
@@ -314,16 +318,16 @@
             .eq('id', GAME_ID);
 
         if (error) {
-            addLog(`❌ Error: ${error.message}`, "error");
-            estadoSpan.textContent = "❌ Error de red";
+            addLog(`Error: ${error.message}`, "error");
+            estadoSpan.textContent = "Error de red";
         } else {
-            addLog(`✅ Movimiento guardado`, "success");
+            addLog(`Movimiento guardado`, "success");
         }
     }
 
     // Reiniciar partida
     async function reiniciarPartida() {
-        addLog("♻️ Reiniciando...", "info");
+        addLog("Reiniciando...", "info");
         tableroLocal = ["", "", "", "", "", "", "", "", ""];
         turnoActual = 'X';
         juegoTerminado = false;
@@ -343,14 +347,14 @@
             
         if (error) {            addLog(`Error reinicio: ${error.message}`, "error");
         } else {
-            addLog(`♻️ Reinicio enviado`, "success");
+            addLog(`Reinicio enviado`, "success");
             await asignarSimbolo();
         }
     }
 
-    // Inicializar sincronización en tiempo real
+    // Inicializar sincronizacion en tiempo real
     async function iniciarSincronizacion() {
-        addLog("🚀 Inicializando...", "info");
+        addLog("Inicializando...", "info");
         
         // Asegurar partida existente
         const { error: upsertError } = await supabase
@@ -366,7 +370,7 @@
             }, { onConflict: 'id' });
             
         if (upsertError) {
-            addLog(`⚠️ Upsert: ${upsertError.message}`, "error");
+            addLog(`Upsert: ${upsertError.message}`, "error");
         }
         
         await asignarSimbolo();
@@ -385,7 +389,7 @@
             juegoTerminado = !currentGame.is_active;
             actualizarVista();
             actualizarEstado(currentGame.winner);
-            addLog(`📥 Estado cargado. Turno: ${turnoActual}`, "success");
+            addLog(`Estado cargado. Turno: ${turnoActual}`, "success");
         }
         
         // Suscribirse a cambios en tiempo real
@@ -396,7 +400,7 @@
                 table: 'juegos',
                 filter: `id=eq.${GAME_ID}`
             }, (payload) => {
-                addLog(`📡 Cambio recibido`, "success");
+                addLog(`Cambio recibido`, "success");
                 const newState = payload.new;
                 
                 tableroLocal = newState.board;
@@ -407,14 +411,15 @@
                 actualizarEstado(newState.winner);
             })
             .subscribe((status) => {
-                addLog(`🔌 Realtime: ${status}`, status === 'SUBSCRIBED' ? "success" : "info");
+                addLog(`Realtime: ${status}`, status === 'SUBSCRIBED' ? "success" : "info");
             });
     }
 
     // Arrancar el juego
     crearTableroVisual();
-    iniciarSincronizacion().catch(err => addLog(`💥 Error: ${err.message}`, "error"));
+    iniciarSincronizacion().catch(err => addLog(`Error: ${err.message}`, "error"));
     botonReiniciar.addEventListener("click", reiniciarPartida);
 </script>
 </body>
 </html>
+
