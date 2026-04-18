@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tres en Línea - Supabase (Multijugador Real)</title>
+    <style>
+        body {
+            font-family: system-ui, 'Segoe UI', monospace;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 2rem;
+            padding: 2rem;
+            box-shadow: 0 25px 45px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        h1 {
+            color: #facc15;
+            text-align: center;
+            margin-top: 0;
+            font-size: 2rem;
+        }
+        .tablero {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            gap: 12px;
+            background: #2d3a4a;
+            padding: 20px;
+            border-radius: 1.5rem;
+        }
+        .celda {
+            background: #0f172a;
+            border-radius: 1rem;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.5rem;
+            font-weight: bold;
+            color: #facc15;
+            cursor: pointer;
+            transition: 0.1s ease;
+            box-shadow: 0 5px 0 #00000033;
+        }
+        .celda:hover {
+            background: #1e293b;
+            transform: scale(0.98);
+        }
+        .estado {
+            text-align: center;
+            margin: 20px 0 15px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            background: #00000066;
+            padding: 10px;
+            border-radius: 60px;
+            color: #facc15;
+        }
+        button {
+            background: #facc15;
+            border: none;
+            font-weight: bold;
+            font-size: 1.2rem;
+            padding: 10px 24px;
+            border-radius: 40px;
+            cursor: pointer;
+            width: 100%;
+            transition: 0.1s;
+            color: #0f172a;
+        }
+        button:hover {
+            background: #ffdf5e;
+            transform: scale(0.97);
+        }
+        .footer {
+            font-size: 0.8rem;
+            text-align: center;
+            margin-top: 20px;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>⚡ TRES EN LÍNEA</h1>
+    <div class="estado" id="estado">🔄 Conectando al servidor...</div>
+    <div class="tablero" id="tablero"></div>
+    <button id="reiniciar">🔄 Reiniciar partida</button>
+    <div class="footer">Jugador actual: <span id="turnoDisplay">—</span></div>
+</div>
+
+<script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    // ========= TUS CREDENCIALES (cámbialas después de probar) =========
+    const supabaseUrl = 'https://vkylxedxgcxrxfezmaau.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreWx4ZWR4Z2N4cnhmZXptYWF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1Mjg1NTcsImV4cCI6MjA5MjEwNDU1N30.QLAB88lwIAwc0IZ2bOwF8cw3QBkcidW9zac7LCvaMiw';
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    
+    const GAME_ID = 1;  // partida fija (para demo)
+
+    // Estado local
+    let miSimbolo = null;       // 'X' o 'O'
+    let turnoActual = 'X';
+    let juegoTerminado = false;
+    let tableroLocal = ["", "", "", "", "", "", "", "", ""];
+
+    // DOM
+    const tableroDiv = document.getElementById("tablero");
+    const estadoSpan = document.getElementById("estado");
+    const turnoDisplay = document.getElementById("turnoDisplay");
+    const botonReiniciar = document.getElementById("reiniciar");
+
+    // Crear interfaz visual
+    function crearTableroVisual() {
+        tableroDiv.innerHTML = "";
+        for (let i = 0; i < 9; i++) {
+            const celda = document.createElement("div");
+            celda.classList.add("celda");
+            celda.dataset.index = i;
+            celda.addEventListener("click", () => hacerMovimiento(i));
+            tableroDiv.appendChild(celda);
+        }
+    }
+
+    function actualizarVista() {
+        const celdas = document.querySelectorAll(".celda");
+        for (let i = 0; i < 9; i++) {
+            celdas[i].textContent = tableroLocal[i];
+        }
+        turnoDisplay.textContent = turnoActual ? `Turno: ${turnoActual}` : "Juego terminado";
+    }
+
+    // Lógica ganador
+    function verificarGanador(board) {
+        const lineas = [
+            [0,1,2], [3,4,5], [6,7,8],
+            [0,3,6], [1,4,7], [2,5,8],
+            [0,4,8], [2,4,6]
+        ];
+        for (let linea of lineas) {
+            const [a,b,c] = linea;
+            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                return board[a];
+            }
+        }
+        if (board.every(cell => cell !== "")) return "empate";
+        return null;
+    }
+
+    async function hacerMovimiento(indice) {
+        if (juegoTerminado) {
+            estadoSpan.textContent = "⛔ Partida terminada. Reinicia para jugar.";
+            return;
+        }
+        if (miSimbolo !== turnoActual) {
+            estadoSpan.textContent = `🙅‍♂️ No es tu turno (tú eres ${miSimbolo})`;
+            return;
+        }
+        if (tableroLocal[indice] !== "") {
+            estadoSpan.textContent = "❌ Casilla ocupada";
+            return;
+        }
+
+        // Construir nuevo tablero temporalmente para validar ganador
+        const nuevoTablero = [...tableroLocal];
+        nuevoTablero[indice] = miSimbolo;
+        const ganador = verificarGanador(nuevoTablero);
+        let siguienteTurno = (turnoActual === 'X') ? 'O' : 'X';
+        let activo = true;
+        
+        if (ganador) {
+            siguienteTurno = null;
+            activo = false;
+        }
+
+        // Enviar a Supabase
+        const { error } = await supabase
+            .from('games')
+            .update({
+                board: nuevoTablero,
+                current_turn: siguienteTurno,
+                winner: ganador,
+                is_active: activo
+            })
+            .eq('id', GAME_ID);
+
+        if (error) {
+            console.error("❌ Error al enviar movimiento:", error);
+            estadoSpan.textContent = "⚠️ Error de red. ¿Intento de nuevo?";
+        } else {
+            estadoSpan.textContent = "✅ Movimiento enviado...";
+        }
+    }
+
+    async function reiniciarPartida() {
+        const tableroVacio = ["", "", "", "", "", "", "", "", ""];
+        const { error } = await supabase
+            .from('games')
+            .update({
+                board: tableroVacio,
+                current_turn: 'X',
+                winner: null,
+                is_active: true
+            })
+            .eq('id', GAME_ID);
+        if (error) {
+            console.error("Error al reiniciar:", error);
+            estadoSpan.textContent = "⚠️ No se pudo reiniciar";
+        } else {
+            estadoSpan.textContent = "♻️ Reiniciando...";
+        }
+    }
+
+    // Asignar símbolo al jugador (primero X, luego O)
+    async function asignarSimbolo() {
+        // Leer cuántos jugadores hay asignados de forma simple
+        // Nota: en producción esto requiere manejo de concurrencia, pero para demo funciona
+        const { data: existing, error } = await supabase
+            .from('game_players')
+            .select('symbol')
+            .eq('game_id', GAME_ID);
+        
+        // Si no existe la tabla game_players, la creamos sobre la marcha (mejor hacerlo en SQL)
+        // Pero para evitar errores, usamos un método simple: 
+        // El primer en escribir una marca en una columna auxiliar 'x_taken' y 'o_taken'
+        // Pero como no tenemos esa columna, haremos una asignación por orden de llegada con localStorage + timestamp
+        // Lo más sencillo para esta demo: usar el navegador y preguntar al usuario si quiere ser X o O?
+        // Para no complicar, el primero que entra ve 'Esperando oponente' y se asigna X, el segundo O.
+        
+        // Método: Intentar reservar X si no está reservado, si no, reservar O
+        const { data: gameData } = await supabase
+            .from('games')
+            .select('x_player_id, o_player_id')
+            .eq('id', GAME_ID)
+            .single();
+        
+        const sessionId = Math.random().toString(36); // ID temporal
+        
+        if (!gameData.x_player_id) {
+            // Tomar X
+            await supabase.from('games').update({ x_player_id: sessionId }).eq('id', GAME_ID);
+            miSimbolo = 'X';
+            estadoSpan.textContent = "🎮 Eres X. Esperando oponente...";
+        } else if (!gameData.o_player_id) {
+            await supabase.from('games').update({ o_player_id: sessionId }).eq('id', GAME_ID);
+            miSimbolo = 'O';
+            estadoSpan.textContent = "🎮 Eres O. ¡La partida comenzará!";
+        } else {
+            // Partida llena, solo espectador
+            miSimbolo = null;
+            estadoSpan.textContent = "👀 Partida llena. Eres espectador.";
+        }
+    }
+
+    // Sincronización en tiempo real
+    async function iniciarSincronizacion() {
+        // Asegurar que exista el registro de juego
+        let { data: game, error } = await supabase
+            .from('games')
+            .select('*')
+            .eq('id', GAME_ID)
+            .single();
+        
+        if (error && error.code === 'PGRST116') {
+            // Crear la partida
+            const { error: insertError } = await supabase
+                .from('games')
+                .insert([{ 
+                    id: GAME_ID, 
+                    board: ["","","","","","","","",""],
+                    current_turn: 'X',
+                    winner: null,
+                    is_active: true
+                }]);
+            if (insertError) console.error("Error al crear partida:", insertError);
+        }
+
+        // Asignar símbolo
+        await asignarSimbolo();
+
+        // Escuchar cambios REALES
+        supabase
+            .channel('game-channel')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'games',
+                    filter: `id=eq.${GAME_ID}`
+                },
+                (payload) => {
+                    const newState = payload.new;
+                    tableroLocal = newState.board;
+                    turnoActual = newState.current_turn || (newState.winner ? null : 'X');
+                    juegoTerminado = !newState.is_active;
+                    actualizarVista();
+                    
+                    if (newState.winner === 'empate') {
+                        estadoSpan.textContent = "🤝 ¡Empate! Presiona reiniciar.";
+                    } else if (newState.winner) {
+                        estadoSpan.textContent = `🏆 ¡El ganador es ${newState.winner}! 🏆`;
+                    } else {
+                        if (miSimbolo === turnoActual && miSimbolo !== null) {
+                            estadoSpan.textContent = "🎯 Tu turno. Haz clic en una casilla.";
+                        } else if (miSimbolo !== null) {
+                            estadoSpan.textContent = `👀 Turno de ${turnoActual} (tú eres ${miSimbolo})`;
+                        } else {
+                            estadoSpan.textContent = "🎬 Esperando que termine la partida actual...";
+                        }
+                    }
+                }
+            )
+            .subscribe();
+
+        // Cargar estado actual
+        const { data: currentGame } = await supabase
+            .from('games')
+            .select('*')
+            .eq('id', GAME_ID)
+            .single();
+        
+        if (currentGame) {
+            tableroLocal = currentGame.board;
+            turnoActual = currentGame.current_turn;
+            juegoTerminado = !currentGame.is_active;
+            actualizarVista();
+        }
+    }
+
+    // Inicio
+    crearTableroVisual();
+    iniciarSincronizacion().catch(err => console.error(err));
+    botonReiniciar.addEventListener("click", reiniciarPartida);
+</script>
+</body>
+</html>
