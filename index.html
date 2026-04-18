@@ -191,10 +191,88 @@
         }
     }
 
-    // ✅ FUNCIÓN CORREGIDA: Hacer movimiento
+    // ✅ FUNCIÓN CORREGIDA: Asignación atómica de símbolos
+    async function asignarSimbolo() {
+        addLog("🔍 Asignando símbolo...", "info");
+                const sessionId = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        let asignado = false;
+        let intentos = 0;
+        const maxIntentos = 3;
+        
+        while (!asignado && intentos < maxIntentos) {
+            intentos++;
+            
+            // Intentar obtener X primero (solo si x_player_id es NULL)
+            const { data: updateX, error: errorX } = await supabase
+                .from('juegos')
+                .update({ x_player_id: sessionId })
+                .eq('id', GAME_ID)
+                .is('x_player_id', null);
+                
+            if (!errorX && updateX.length > 0) {
+                // ✅ Logré asignarme como X
+                miSimbolo = 'X';
+                asignado = true;
+                addLog(`🎮 Eres X (intento ${intentos})`, "success");
+                continue;
+            }
+            
+            // Si no pude obtener X, intentar obtener O (solo si o_player_id es NULL)
+            const { data: updateO, error: errorO } = await supabase
+                .from('juegos')
+                .update({ o_player_id: sessionId })
+                .eq('id', GAME_ID)
+                .is('o_player_id', null);
+                
+            if (!errorO && updateO.length > 0) {
+                // ✅ Logré asignarme como O
+                miSimbolo = 'O';
+                asignado = true;
+                addLog(`🎮 Eres O (intento ${intentos})`, "success");
+                continue;
+            }
+            
+            // Si llegamos aquí, ambos están ocupados
+            if (!errorX && !errorO) {
+                miSimbolo = null;
+                asignado = true;
+                addLog(`👀 Partida llena. Modo espectador.`, "info");
+            } else {
+                // Error de red, esperar y reintentar
+                addLog(`⚠️ Reintentando... (${intentos}/${maxIntentos})`, "info");
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+                if (!asignado) {
+            addLog(`❌ No se pudo unir a la partida`, "error");
+            miSimbolo = null;
+        }
+        
+        actualizarEstado();
+    }
+
+    // Verificar jugadores conectados
+    function iniciarVerificacionJugadores() {
+        setInterval(async () => {
+            const { data: game } = await supabase
+                .from('juegos')
+                .select('x_player_id, o_player_id')
+                .eq('id', GAME_ID)
+                .single();
+                
+            if (game) {
+                const jugadorX = game.x_player_id ? '🟢' : '⚪';
+                const jugadorO = game.o_player_id ? '🟢' : '⚪';
+                addLog(`👥 Jugadores: X ${jugadorX} | O ${jugadorO}`, "info");
+            }
+        }, 5000);
+    }
+
+    // Enviar movimiento a Supabase
     async function hacerMovimiento(indice) {
         if (juegoTerminado) {
-            addLog("⛔ Partida terminada. Reinicia.", "error");            return;
+            addLog("⛔ Partida terminada. Reinicia.", "error");
+            return;
         }
         if (miSimbolo !== turnoActual) {
             addLog(`🙅 No es tu turno`, "error");
@@ -205,7 +283,7 @@
             return;
         }
 
-        // ✅ ACTUALIZAR LOCALMENTE PRIMERO (para feedback inmediato)
+        // Actualizar localmente primero
         tableroLocal[indice] = miSimbolo;
         actualizarVista();
         
@@ -214,8 +292,7 @@
         let activo = true;
         
         if (ganador) {
-            siguienteTurno = null;
-            activo = false;
+            siguienteTurno = null;            activo = false;
             juegoTerminado = true;
             addLog(`🏆 ${ganador} ha ganado!`, "success");
         } else {
@@ -226,7 +303,6 @@
 
         addLog(`📤 Enviando ${miSimbolo} en casilla ${indice}`, "info");
         
-        // Enviar a Supabase
         const { error } = await supabase
             .from('juegos')
             .update({
@@ -244,6 +320,7 @@
             addLog(`✅ Movimiento guardado`, "success");
         }
     }
+
     // Reiniciar partida
     async function reiniciarPartida() {
         addLog("♻️ Reiniciando...", "info");
@@ -264,43 +341,11 @@
             })
             .eq('id', GAME_ID);
             
-        if (error) {
-            addLog(`Error reinicio: ${error.message}`, "error");
+        if (error) {            addLog(`Error reinicio: ${error.message}`, "error");
         } else {
             addLog(`♻️ Reinicio enviado`, "success");
-            actualizarEstado();
+            await asignarSimbolo();
         }
-    }
-
-    // Asignar símbolo al jugador
-    async function asignarSimbolo() {
-        addLog("🔍 Asignando símbolo...", "info");
-        
-        let { data: game, error } = await supabase
-            .from('juegos')
-            .select('x_player_id, o_player_id')
-            .eq('id', GAME_ID)
-            .single();
-            
-        if (error) {
-            addLog(`⚠️ Error: ${error.message}`, "error");
-            return;
-        }
-        
-        const sessionId = Math.random().toString(36).substring(2, 10);
-        
-        if (!game.x_player_id) {
-            await supabase.from('juegos').update({ x_player_id: sessionId }).eq('id', GAME_ID);
-            miSimbolo = 'X';
-            addLog(`🎮 Eres X`, "success");        } else if (!game.o_player_id) {
-            await supabase.from('juegos').update({ o_player_id: sessionId }).eq('id', GAME_ID);
-            miSimbolo = 'O';
-            addLog(`🎮 Eres O`, "success");
-        } else {
-            miSimbolo = null;
-            addLog(`👀 Partida llena. Espectador.`, "info");
-        }
-        actualizarEstado();
     }
 
     // Inicializar sincronización en tiempo real
@@ -325,6 +370,7 @@
         }
         
         await asignarSimbolo();
+        iniciarVerificacionJugadores();
         
         // Cargar estado actual
         const { data: currentGame, error: loadError } = await supabase
@@ -341,10 +387,10 @@
             actualizarEstado(currentGame.winner);
             addLog(`📥 Estado cargado. Turno: ${turnoActual}`, "success");
         }
-                // ✅ Suscribirse a cambios en tiempo real
+        
+        // Suscribirse a cambios en tiempo real
         const channel = supabase
-            .channel('juego-channel')
-            .on('postgres_changes', {
+            .channel('juego-channel')            .on('postgres_changes', {
                 event: 'UPDATE',
                 schema: 'public',
                 table: 'juegos',
@@ -353,12 +399,10 @@
                 addLog(`📡 Cambio recibido`, "success");
                 const newState = payload.new;
                 
-                // Actualizar estado local desde la BD
                 tableroLocal = newState.board;
                 turnoActual = newState.current_turn;
                 juegoTerminado = !newState.is_active;
                 
-                // Actualizar vista para ambos jugadores
                 actualizarVista();
                 actualizarEstado(newState.winner);
             })
@@ -367,7 +411,7 @@
             });
     }
 
-    // 🎮 Arrancar el juego
+    // Arrancar el juego
     crearTableroVisual();
     iniciarSincronizacion().catch(err => addLog(`💥 Error: ${err.message}`, "error"));
     botonReiniciar.addEventListener("click", reiniciarPartida);
