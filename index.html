@@ -47,8 +47,7 @@
             font-weight: bold;
             color: #facc15;
             cursor: pointer;
-            transition: 0.1s ease;
-            box-shadow: 0 5px 0 #00000033;
+            transition: 0.1s ease;            box-shadow: 0 5px 0 #00000033;
         }
         .celda:active { transform: scale(0.96); }
         .estado {
@@ -97,8 +96,7 @@
 <div class="container">
     <h1>⚡ TRES EN LÍNEA 1vs1</h1>
     <div class="estado" id="estado">🔄 Conectando...</div>
-    <div class="tablero" id="tablero"></div>
-    <button id="reiniciar">🔄 Reiniciar partida</button>
+    <div class="tablero" id="tablero"></div>    <button id="reiniciar">🔄 Reiniciar partida</button>
     <div class="footer">🎮 Solo dos jugadores - Tiempo real con Supabase</div>
     <div class="logs-area" id="logsPanel"><div class="log-entry">📡 Iniciando juego...</div></div>
 </div>
@@ -147,8 +145,7 @@
             celda.addEventListener("click", () => hacerMovimiento(i));
             tableroDiv.appendChild(celda);
         }
-        addLog("✅ Tablero visual creado", "success");
-    }
+        addLog("✅ Tablero visual creado", "success");    }
 
     // Actualizar vista con el tablero local
     function actualizarVista() {
@@ -197,15 +194,14 @@
         let activo = true;
         if (ganador) {
             siguienteTurno = null;
-            activo = false;
-            addLog(`🏆 ${ganador} ha ganado!`, "success");
+            activo = false;            addLog(`🏆 ${ganador} ha ganado!`, "success");
         }
 
         addLog(`📤 Enviando ${miSimbolo} en casilla ${indice}`, "info");
         
-        // Actualizar en Supabase (tabla 'games')
+        // ✅ CORREGIDO: Cambiado de 'games' a 'juegos'
         const { error } = await supabase
-            .from('games')
+            .from('juegos')
             .update({
                 board: nuevoTablero,
                 current_turn: siguienteTurno,
@@ -226,8 +222,9 @@
     async function reiniciarPartida() {
         addLog("♻️ Reiniciando...", "info");
         const tableroVacio = ["", "", "", "", "", "", "", "", ""];
+        // ✅ CORREGIDO: Cambiado de 'games' a 'juegos'
         const { error } = await supabase
-            .from('games')
+            .from('juegos')
             .update({
                 board: tableroVacio,
                 current_turn: 'X',
@@ -246,9 +243,9 @@
 
     // Asignar símbolo (X u O) con control de 2 jugadores máximo
     async function asignarSimbolo() {
-        addLog("🔍 Asignando símbolo...", "info");
+        addLog("🔍 Asignando símbolo...", "info");        // ✅ CORREGIDO: Cambiado de 'games' a 'juegos'
         let { data: game, error } = await supabase
-            .from('games')
+            .from('juegos')
             .select('x_player_id, o_player_id')
             .eq('id', GAME_ID)
             .single();
@@ -259,12 +256,12 @@
         
         const sessionId = Math.random().toString(36).substring(2, 10);
         if (!game.x_player_id) {
-            await supabase.from('games').update({ x_player_id: sessionId }).eq('id', GAME_ID);
+            await supabase.from('juegos').update({ x_player_id: sessionId }).eq('id', GAME_ID);
             miSimbolo = 'X';
             addLog(`🎮 Eres X`, "success");
             estadoSpan.textContent = "Eres X. Esperando oponente...";
         } else if (!game.o_player_id) {
-            await supabase.from('games').update({ o_player_id: sessionId }).eq('id', GAME_ID);
+            await supabase.from('juegos').update({ o_player_id: sessionId }).eq('id', GAME_ID);
             miSimbolo = 'O';
             addLog(`🎮 Eres O`, "success");
             estadoSpan.textContent = "Eres O. ¡Juega!";
@@ -279,9 +276,9 @@
     async function iniciarSincronizacion() {
         addLog("🚀 Inicializando...", "info");
         
-        // Asegurar que la partida con ID=1 existe (con los campos correctos)
+        // ✅ CORREGIDO: Cambiado de 'games' a 'juegos'
         const { error: upsertError } = await supabase
-            .from('games')
+            .from('juegos')
             .upsert({
                 id: GAME_ID,
                 board: ["","","","","","","","",""],
@@ -295,13 +292,13 @@
             addLog(`⚠️ Upsert: ${upsertError.message}`, "error");
         } else {
             addLog(`📦 Partida asegurada (ID ${GAME_ID})`, "success");
-        }
-        
+        }        
         await asignarSimbolo();
         
         // Cargar estado actual desde la base de datos
+        // ✅ CORREGIDO: Cambiado de 'games' a 'juegos'
         const { data: currentGame, error: loadError } = await supabase
-            .from('games')
+            .from('juegos')
             .select('*')
             .eq('id', GAME_ID)
             .single();
@@ -317,12 +314,13 @@
         }
         
         // Escuchar cambios en tiempo real (Realtime)
+        // ✅ CORREGIDO: Cambiado el nombre del canal
         const channel = supabase
-            .channel('game-channel')
+            .channel('juego-channel')
             .on('postgres_changes', {
                 event: 'UPDATE',
                 schema: 'public',
-                table: 'games',
+                table: 'juegos',  // ✅ CORREGIDO: Cambiado de 'games' a 'juegos'
                 filter: `id=eq.${GAME_ID}`
             }, (payload) => {
                 addLog(`📡 Cambio detectado en tiempo real`, "success");
@@ -343,8 +341,7 @@
                         estadoSpan.textContent = `Turno de ${turnoActual}`;
                     } else {
                         estadoSpan.textContent = "Espectador";
-                    }
-                }
+                    }                }
             })
             .subscribe((status) => {
                 addLog(`🔌 Realtime: ${status}`, status === 'SUBSCRIBED' ? "success" : "info");
