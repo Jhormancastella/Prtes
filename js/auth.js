@@ -126,7 +126,7 @@ async function handleRegistro(e) {
 
     if (username.length < 3) { mostrarError('authError', 'Username mínimo 3 caracteres'); return; }
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
         email, password,
         options: {
             data: { username, avatar_url: avatarUrl, avatar_tipo: avatarTipo },
@@ -136,6 +136,15 @@ async function handleRegistro(e) {
 
     if (error) { mostrarError('authError', error.message); return; }
 
+    // Sin confirmación de correo, pasa directo al lobby
+    if (data?.user) {
+        usuarioActual = data.user;
+        perfilActual = await fetchPerfil(data.user.id);
+        irAlLobby();
+        return;
+    }
+
+    // Fallback por si el servidor aún requiere OTP
     pendingEmail = email;
     mostrarPantalla('screenOtp');
     document.getElementById('otpEmailLabel').textContent = email;
