@@ -124,6 +124,64 @@
     </div>
 </div>
 
+<!-- ===== PERFIL ===== -->
+<div class="screen" id="screenPerfil">
+    <div class="top-bar">
+        <button class="btn-icon" id="btnVolverPerfil">← Lobby</button>
+        <div class="ranking-title">👤 Mi Perfil</div>
+        <div style="width:70px"></div>
+    </div>
+    <div class="perfil-card">
+        <!-- Avatar actual -->
+        <div class="perfil-avatar-wrap">
+            <img id="perfilAvatarActual" src="" alt="avatar" class="perfil-avatar-grande">
+            <label class="perfil-cambiar-foto">
+                📷 Cambiar foto
+                <input type="file" id="inputAvatarPerfil" accept="image/*" style="display:none">
+            </label>
+        </div>
+
+        <!-- Avatares predeterminados -->
+        <div class="form-group" style="margin-top:12px">
+            <label>O elige un avatar</label>
+            <div class="avatar-grid" id="avatarGridPerfil"></div>
+        </div>
+
+        <input type="hidden" id="perfilAvatarUrl">
+
+        <!-- Datos -->
+        <form id="formPerfil">
+            <div class="form-group">
+                <label>Nombre de usuario</label>
+                <input type="text" id="perfilUsername" required minlength="3">
+            </div>
+            <div class="form-group">
+                <label>Correo (no editable)</label>
+                <input type="email" id="perfilEmail" disabled style="opacity:0.5">
+            </div>
+            <button type="submit" class="btn-primary">Guardar cambios</button>
+        </form>
+        <div class="auth-error" id="perfilMsg"></div>
+
+        <!-- Cambiar contraseña -->
+        <div class="perfil-seccion">
+            <div class="perfil-seccion-titulo">Cambiar contraseña</div>
+            <form id="formCambiarClave">
+                <div class="form-group">
+                    <label>Nueva contraseña</label>
+                    <input type="password" id="nuevaClave" placeholder="mínimo 6 caracteres" minlength="6" required>
+                </div>
+                <div class="form-group">
+                    <label>Confirmar contraseña</label>
+                    <input type="password" id="confirmarClave" placeholder="repite la contraseña" required>
+                </div>
+                <button type="submit" class="btn-primary">Actualizar contraseña</button>
+            </form>
+            <div class="auth-error" id="claveMsg"></div>
+        </div>
+    </div>
+</div>
+
 <!-- ===== RANKING ===== -->
 <div class="screen" id="screenRanking">
     <div class="top-bar">
@@ -153,12 +211,12 @@
     import { cargarLobby } from './js/lobby.js';
     import { initGame } from './js/game.js';
     import { cargarRanking } from './js/ranking.js';
+    import { initPerfil } from './js/perfil.js';
 
-    // Inicializar UI de auth
     initAuthUI();
     initGame();
+    initPerfil();
 
-    // Botones globales
     document.getElementById('btnSalir').addEventListener('click', cerrarSesion);
     document.getElementById('btnRanking').addEventListener('click', cargarRanking);
     document.getElementById('btnVolverLobby').addEventListener('click', () => {
@@ -166,7 +224,6 @@
         cargarLobby();
     });
 
-    // Verificar sesión activa al cargar
     const sesionActiva = await initAuth();
     if (sesionActiva) {
         mostrarPantalla('screenLobby');

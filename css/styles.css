@@ -188,3 +188,26 @@ button:active { transform: scale(0.97); }
     background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
     border-radius: 1.5rem; padding: 1.2rem; overflow-x: auto;
 }
+
+/* ===== PERFIL ===== */
+.perfil-card {
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 1.5rem; padding: 1.2rem; margin-top: 4px;
+}
+.perfil-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 4px; }
+.perfil-avatar-grande {
+    width: 90px; height: 90px; border-radius: 50%; object-fit: cover;
+    border: 3px solid #facc15; box-shadow: 0 0 0 4px #facc1522;
+}
+.perfil-cambiar-foto {
+    display: inline-block; padding: 6px 16px; border-radius: 20px;
+    border: 1px dashed rgba(255,255,255,0.3); color: #94a3b8;
+    font-size: 0.8rem; cursor: pointer; transition: 0.15s;
+}
+.perfil-cambiar-foto:hover { border-color: #facc15; color: #facc15; }
+.perfil-seccion {
+    margin-top: 20px; padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+.perfil-seccion-titulo { color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+.header-usuario:hover .header-avatar { border-color: #facc15; }

@@ -266,6 +266,20 @@ async function salirSala() {
         await supabase.from('juegos').update({ o_player_id: null }).eq('id', salaActual).eq('o_player_id', miSessionId);
     }
 
+    // Si la sala quedó vacía, resetear tablero también
+    const { data: g } = await supabase.from('juegos')
+        .select('x_player_id, o_player_id')
+        .eq('id', salaActual).single();
+
+    if (g && !g.x_player_id && !g.o_player_id) {
+        await supabase.from('juegos').update({
+            board: ['','','','','','','','',''],
+            current_turn: 'X',
+            winner: null,
+            is_active: true
+        }).eq('id', salaActual);
+    }
+
     salaActual = null;
     miSimbolo = null;
     mostrarPantalla('screenLobby');

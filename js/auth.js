@@ -85,17 +85,22 @@ function renderAvatarSelector() {
 async function handleAvatarUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const ext = file.name.split('.').pop();
+    const ext = file.name.split('.').pop().toLowerCase();
+    const allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    if (!allowed.includes(ext)) { mostrarError('authError', 'Formato no permitido. Usa JPG, PNG o WEBP.'); return; }
+
+    mostrarError('authError', 'Subiendo imagen...');
     const path = `temp/${Date.now()}.${ext}`;
-    const { data, error } = await supabase.storage.from('avatares').upload(path, file, { upsert: true });
-    if (error) { mostrarError('authError', 'Error subiendo imagen'); return; }
+    const { data, error } = await supabase.storage.from('avatares').upload(path, file, { upsert: true, contentType: file.type });
+    if (error) { mostrarError('authError', 'Error subiendo imagen: ' + error.message); return; }
     const { data: urlData } = supabase.storage.from('avatares').getPublicUrl(data.path);
-    document.getElementById('avatarSeleccionado').value = urlData.publicUrl;
+    const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+    document.getElementById('avatarSeleccionado').value = publicUrl;
     document.getElementById('avatarTipo').value = 'subido';
-    // Mostrar preview
-    document.getElementById('avatarPreview').src = urlData.publicUrl;
+    document.getElementById('avatarPreview').src = publicUrl;
     document.getElementById('avatarPreview').style.display = 'block';
     document.querySelectorAll('.avatar-opcion').forEach(d => d.classList.remove('selected'));
+    mostrarError('authError', '');
 }
 
 async function handleLogin(e) {
@@ -169,10 +174,16 @@ export function actualizarHeaderUsuario() {
     const p = perfilActual;
     if (!p) return;
     const el = document.getElementById('headerUsuario');
-    if (el) el.innerHTML = `
-        <img src="${p.avatar_url || AVATARES[0].url}" class="header-avatar">
-        <span>${p.username}</span>
-    `;
+    if (el) {
+        el.innerHTML = `
+            <img src="${p.avatar_url || AVATARES[0].url}" class="header-avatar" title="Editar perfil">
+            <span>${p.username}</span>
+        `;
+        el.style.cursor = 'pointer';
+        el.onclick = () => {
+            import('./perfil.js').then(m => m.abrirPerfil());
+        };
+    }
 }
 
 export async function cerrarSesion() {
