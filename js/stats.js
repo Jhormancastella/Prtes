@@ -11,12 +11,25 @@
 import { supabase } from './supabase.js';
 
 export async function recalcularStatsDesdeJuegos(uid) {
-    // Buscar salas por history (permanente) O por id actual (compatibilidad)
-    const { data: salas, error } = await supabase
+    // Primero intentar con columnas history, si falla usar solo las actuales
+    let salas = null;
+
+    const { data: salasConHistory, error: errHistory } = await supabase
         .from('juegos')
         .select('x_player_id, o_player_id, x_player_history, o_player_history, scores');
 
-    if (error) return null;
+    if (errHistory) {
+        // Las columnas history no existen aún — usar solo los campos actuales
+        const { data: salasFallback, error: errFallback } = await supabase
+            .from('juegos')
+            .select('x_player_id, o_player_id, scores');
+        if (errFallback) return null;
+        salas = salasFallback;
+    } else {
+        salas = salasConHistory;
+    }
+
+    if (!salas?.length) return null;
 
     let victorias = 0;
     let derrotas  = 0;
@@ -25,12 +38,9 @@ export async function recalcularStatsDesdeJuegos(uid) {
     for (const sala of salas) {
         const s = sala.scores || {};
 
-        // Determinar si el jugador fue X u O en esta sala
-        // Priorizar history (permanente), fallback a id actual
         const fueX = sala.x_player_history === uid || sala.x_player_id === uid;
         const fueO = sala.o_player_history === uid || sala.o_player_id === uid;
 
-        // Evitar contar si por algún bug aparece en ambos lados
         if (fueX && !fueO) {
             victorias += s.x      || 0;
             derrotas  += s.o      || 0;

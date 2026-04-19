@@ -58,6 +58,13 @@ export function initGame() {
 }
 
 export async function entrarSala(id) {
+    // Asegurar que miSessionId usa el ID real del perfil (puede haber cambiado tras login)
+    const perfilActual = getPerfil();
+    if (perfilActual?.id) {
+        miSessionId = perfilActual.id;
+        localStorage.setItem('tres_session', miSessionId);
+    }
+
     salaActual = id;
     miSimbolo = null;
     dosJugadores = false;
@@ -157,27 +164,61 @@ async function asignarSimbolo() {
         .single();
     if (!g) return;
 
-    // Reconexión
+    // Reconexión — ya estás en la sala
     if (g.x_player_id === miSessionId) { miSimbolo = 'X'; addLog('Reconectado como X', 'success'); return; }
     if (g.o_player_id === miSessionId) { miSimbolo = 'O'; addLog('Reconectado como O', 'success'); return; }
 
-    // Intentar tomar X (update atómico con condición)
-    const { data: rx } = await supabase
+    // Verificar si los IDs actuales son válidos (existen en perfiles)
+    // Si no existen, son fantasmas — limpiarlos para liberar el slot
+    const idsOcupados = [g.x_player_id, g.o_player_id].filter(Boolean);
+    if (idsOcupados.length > 0) {
+        const { data: perfilesExistentes } = await supabase
+            .from('perfiles')
+            .select('id')
+            .in('id', idsOcupados);
+        const existentes = new Set((perfilesExistentes || []).map(p => p.id));
+
+        const limpiar = {};
+        if (g.x_player_id && !existentes.has(g.x_player_id)) limpiar.x_player_id = null;
+        if (g.o_player_id && !existentes.has(g.o_player_id)) limpiar.o_player_id = null;
+
+        if (Object.keys(limpiar).length > 0) {
+            await supabase.from('juegos').update(limpiar).eq('id', salaActual);
+            addLog('Slots fantasma liberados', 'info');
+            // Recargar estado limpio
+            const { data: gLimpio } = await supabase
+                .from('juegos').select('x_player_id, o_player_id').eq('id', salaActual).single();
+            if (gLimpio) {
+                g.x_player_id = gLimpio.x_player_id;
+                g.o_player_id = gLimpio.o_player_id;
+            }
+        }
+    }
+
+    // Sala llena con jugadores reales — espectador
+    if (g.x_player_id && g.o_player_id) {
+        miSimbolo = null;
+        addLog('Sala llena. Modo espectador.', 'info');
+        return;
+    }
+
+    // Intentar tomar X
+    const { data: rx, error: exX } = await supabase
         .from('juegos')
-        .update({ x_player_id: miSessionId, x_player_history: miSessionId })
+        .update({ x_player_id: miSessionId })
         .eq('id', salaActual)
         .is('x_player_id', null)
         .select('id');
-    if (rx?.length) { miSimbolo = 'X'; addLog('Eres X', 'success'); return; }
+    if (!exX && rx?.length) { miSimbolo = 'X'; addLog('Eres X', 'success'); return; }
 
-    // Intentar tomar O (update atómico con condición)
-    const { data: ro } = await supabase
+    // Intentar tomar O
+    const { data: ro, error: exO } = await supabase
         .from('juegos')
-        .update({ o_player_id: miSessionId, o_player_history: miSessionId })
+        .update({ o_player_id: miSessionId })
         .eq('id', salaActual)
         .is('o_player_id', null)
         .select('id');
-    if (ro?.length) { miSimbolo = 'O'; addLog('Eres O', 'success'); return; }
+    if (!exO && ro?.length) { miSimbolo = 'O'; addLog('Eres O', 'success'); return; }
 
     miSimbolo = null;
     addLog('Sala llena. Espectador.', 'info');
