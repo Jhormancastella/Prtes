@@ -1,3 +1,4 @@
+// lobby.js v2
 import { supabase } from './supabase.js';
 import { entrarSala } from './game.js';
 
