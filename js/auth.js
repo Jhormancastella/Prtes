@@ -170,6 +170,9 @@ function irAlLobby() {
     actualizarHeaderUsuario();
 }
 
+let _onAvatarClick = null;
+export function setOnAvatarClick(fn) { _onAvatarClick = fn; }
+
 export function actualizarHeaderUsuario() {
     const p = perfilActual;
     if (!p) return;
@@ -180,9 +183,7 @@ export function actualizarHeaderUsuario() {
             <span>${p.username}</span>
         `;
         el.style.cursor = 'pointer';
-        el.onclick = () => {
-            import('./perfil.js').then(m => m.abrirPerfil());
-        };
+        el.onclick = () => { if (_onAvatarClick) _onAvatarClick(); };
     }
 }
 

@@ -206,16 +206,19 @@
 </div>
 
 <script type="module">
-    import { initAuth, initAuthUI, cerrarSesion, actualizarHeaderUsuario } from './js/auth.js';
+    import { initAuth, initAuthUI, cerrarSesion, actualizarHeaderUsuario, setOnAvatarClick } from './js/auth.js';
     import { mostrarPantalla } from './js/router.js';
     import { cargarLobby } from './js/lobby.js';
     import { initGame } from './js/game.js';
     import { cargarRanking } from './js/ranking.js';
-    import { initPerfil } from './js/perfil.js';
+    import { initPerfil, abrirPerfil } from './js/perfil.js';
 
     initAuthUI();
     initGame();
     initPerfil();
+
+    // Conectar click del avatar al perfil
+    setOnAvatarClick(abrirPerfil);
 
     document.getElementById('btnSalir').addEventListener('click', cerrarSesion);
     document.getElementById('btnRanking').addEventListener('click', cargarRanking);
