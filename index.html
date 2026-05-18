@@ -17,6 +17,7 @@
     <button id="introSkip">Saltar ▶</button>
 </div>
 <script type="module">
+    import { crearSalas } from './js/setup.js';
     import { montarUI }                                                    from './js/ui.js';
     import { initAuth, initAuthUI, cerrarSesion,
              actualizarHeaderUsuario, setOnAvatarClick }                   from './js/auth.js';
@@ -40,7 +41,10 @@
     // También cerrar si el video no carga
     video.addEventListener('error', cerrarIntro);
 
-    // 1. Montar todo el HTML de pantallas
+    // 1. Crear salas si no existen (primera vez)
+    await crearSalas();
+
+    // 2. Montar todo el HTML de pantallas
     montarUI();
 
     // 2. Inicializar módulos

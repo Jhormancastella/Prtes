@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Avatares: cualquiera puede leer, solo autenticados pueden subir
+    match /avatares/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    // Carpeta por usuario
+    match /{uid}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+    // Temp (registro sin cuenta aún)
+    match /temp/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

@@ -1,4 +1,17 @@
-import { supabase } from './supabase.js';
+import { auth, db, storage } from './firebase.js';
+import {
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged,
+    updatePassword
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import {
+    doc, getDoc, setDoc, updateDoc
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {
+    ref, uploadBytes, getDownloadURL
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { mostrarPantalla } from './router.js';
 import { cargarLobby } from './lobby.js';
 import { AVATARES_BASE } from './avatares.js';
@@ -7,38 +20,41 @@ import { recalcularStatsDesdeJuegos } from './stats.js';
 export const AVATARES = AVATARES_BASE;
 
 let usuarioActual = null;
-let perfilActual = null;
-let pendingEmail = null;
+let perfilActual  = null;
 let _onAvatarClick = null;
 
 export function getUsuario() { return usuarioActual; }
-export function getPerfil() { return perfilActual; }
+export function getPerfil()  { return perfilActual; }
 export function setOnAvatarClick(fn) { _onAvatarClick = fn; }
 
 export async function initAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-        usuarioActual = session.user;
-        perfilActual = await fetchPerfil(session.user.id);
-        return true;
-    }
-    return false;
+    return new Promise(resolve => {
+        onAuthStateChanged(auth, async user => {
+            if (user) {
+                usuarioActual = user;
+                perfilActual  = await fetchPerfil(user.uid);
+                resolve(true);
+            } else {
+                resolve(false);
+            }
+        });
+    });
 }
 
 async function fetchPerfil(uid) {
-    const { data } = await supabase.from('perfiles').select('*').eq('id', uid).single();
-    if (data) {
-        try {
-            const stats = await recalcularStatsDesdeJuegos(uid);
-            if (stats) {
-                data.victorias = stats.victorias;
-                data.derrotas  = stats.derrotas;
-                data.empates   = stats.empates;
-                data.partidas  = stats.partidas;
-            }
-        } catch (e) {
-            console.warn('No se pudieron recalcular stats:', e);
+    const snap = await getDoc(doc(db, 'perfiles', uid));
+    if (!snap.exists()) return null;
+    const data = { id: uid, ...snap.data() };
+    try {
+        const stats = await recalcularStatsDesdeJuegos(uid);
+        if (stats) {
+            data.victorias = stats.victorias;
+            data.derrotas  = stats.derrotas;
+            data.empates   = stats.empates;
+            data.partidas  = stats.partidas;
         }
+    } catch (e) {
+        console.warn('No se pudieron recalcular stats:', e);
     }
     return data;
 }
@@ -48,8 +64,6 @@ export function initAuthUI() {
     document.getElementById('tabRegistro').addEventListener('click', () => switchTab('registro'));
     document.getElementById('formLogin').addEventListener('submit', handleLogin);
     document.getElementById('formRegistro').addEventListener('submit', handleRegistro);
-    document.getElementById('formOtp').addEventListener('submit', handleOtp);
-    document.getElementById('btnReenviarOtp').addEventListener('click', handleReenviarOtp);
     renderAvatarSelector();
     document.getElementById('inputAvatarUpload').addEventListener('change', handleAvatarUpload);
 }
@@ -57,7 +71,7 @@ export function initAuthUI() {
 function switchTab(tab) {
     document.getElementById('tabLogin').classList.toggle('tab-active', tab === 'login');
     document.getElementById('tabRegistro').classList.toggle('tab-active', tab === 'registro');
-    document.getElementById('formLogin').style.display = tab === 'login' ? 'block' : 'none';
+    document.getElementById('formLogin').style.display   = tab === 'login'    ? 'block' : 'none';
     document.getElementById('formRegistro').style.display = tab === 'registro' ? 'block' : 'none';
     mostrarError('authError', '');
 }
@@ -68,14 +82,14 @@ function renderAvatarSelector() {
     AVATARES.forEach((av, idx) => {
         const div = document.createElement('div');
         div.classList.add('avatar-opcion');
-        div.dataset.id = av.id;
+        div.dataset.id  = av.id;
         div.dataset.url = av.url;
         div.setAttribute('role', 'radio');
         div.setAttribute('aria-label', av.label);
         div.setAttribute('tabindex', '0');
         div.innerHTML = `<img src="${av.url}" alt="${av.label}">`;
         div.addEventListener('click', () => seleccionarAvatar(div, av.url));
-        div.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') seleccionarAvatar(div, av.url); });
+        div.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') seleccionarAvatar(div, av.url); });
         if (idx === 0) div.classList.add('selected');
         grid.appendChild(div);
     });
@@ -88,7 +102,6 @@ function seleccionarAvatar(div, url) {
     div.classList.add('selected');
     document.getElementById('avatarSeleccionado').value = url;
     document.getElementById('avatarTipo').value = 'predeterminado';
-    // Limpiar preview de upload
     const preview = document.getElementById('avatarPreview');
     preview.style.display = 'none';
     preview.src = '';
@@ -98,46 +111,51 @@ async function handleAvatarUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
-    const allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    if (!allowed.includes(ext)) { mostrarError('authError', 'Formato no permitido. Usa JPG, PNG o WEBP.'); return; }
-
+    if (!['jpg','jpeg','png','gif','webp'].includes(ext)) {
+        mostrarError('authError', 'Formato no permitido. Usa JPG, PNG o WEBP.');
+        return;
+    }
     setLoading('btnRegistro', true);
     mostrarError('authError', 'Subiendo imagen...');
-    const path = `temp/${Date.now()}.${ext}`;
-    const { data, error } = await supabase.storage.from('avatares').upload(path, file, { upsert: true, contentType: file.type });
+    try {
+        const storageRef = ref(storage, `temp/${Date.now()}.${ext}`);
+        await uploadBytes(storageRef, file);
+        const publicUrl = await getDownloadURL(storageRef);
+        document.getElementById('avatarSeleccionado').value = publicUrl;
+        document.getElementById('avatarTipo').value = 'subido';
+        const preview = document.getElementById('avatarPreview');
+        preview.src = publicUrl;
+        preview.style.display = 'block';
+        document.querySelectorAll('#avatarGrid .avatar-opcion').forEach(d => d.classList.remove('selected'));
+        mostrarError('authError', '');
+    } catch (err) {
+        mostrarError('authError', 'Error subiendo imagen: ' + err.message);
+    }
     setLoading('btnRegistro', false);
-
-    if (error) { mostrarError('authError', 'Error subiendo imagen: ' + error.message); return; }
-    const { data: urlData } = supabase.storage.from('avatares').getPublicUrl(data.path);
-    const publicUrl = urlData.publicUrl + '?t=' + Date.now();
-    document.getElementById('avatarSeleccionado').value = publicUrl;
-    document.getElementById('avatarTipo').value = 'subido';
-    const preview = document.getElementById('avatarPreview');
-    preview.src = publicUrl;
-    preview.style.display = 'block';
-    document.querySelectorAll('#avatarGrid .avatar-opcion').forEach(d => d.classList.remove('selected'));
-    mostrarError('authError', '');
 }
 
 async function handleLogin(e) {
     e.preventDefault();
-    const email = document.getElementById('loginEmail').value.trim();
+    const email    = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     mostrarError('authError', '');
     setLoading('btnLogin', true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        usuarioActual = cred.user;
+        perfilActual  = await fetchPerfil(cred.user.uid);
+        irAlLobby();
+    } catch (err) {
+        mostrarError('authError', traducirError(err.code));
+    }
     setLoading('btnLogin', false);
-    if (error) { mostrarError('authError', traducirError(error.message)); return; }
-    usuarioActual = data.user;
-    perfilActual = await fetchPerfil(data.user.id);
-    irAlLobby();
 }
 
 async function handleRegistro(e) {
     e.preventDefault();
-    const username = document.getElementById('regUsername').value.trim();
-    const email = document.getElementById('regEmail').value.trim();
-    const password = document.getElementById('regPassword').value;
+    const username  = document.getElementById('regUsername').value.trim();
+    const email     = document.getElementById('regEmail').value.trim();
+    const password  = document.getElementById('regPassword').value;
     const avatarUrl = document.getElementById('avatarSeleccionado').value;
     const avatarTipo = document.getElementById('avatarTipo').value;
     mostrarError('authError', '');
@@ -145,41 +163,26 @@ async function handleRegistro(e) {
     if (username.length < 3) { mostrarError('authError', 'Username mínimo 3 caracteres'); return; }
 
     setLoading('btnRegistro', true);
-    const { data, error } = await supabase.auth.signUp({
-        email, password,
-        options: { data: { username, avatar_url: avatarUrl, avatar_tipo: avatarTipo }, emailRedirectTo: null }
-    });
-    setLoading('btnRegistro', false);
-
-    if (error) { mostrarError('authError', traducirError(error.message)); return; }
-
-    if (data?.user) {
-        usuarioActual = data.user;
-        perfilActual = await fetchPerfil(data.user.id);
+    try {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        // Crear perfil en Firestore
+        await setDoc(doc(db, 'perfiles', cred.user.uid), {
+            username,
+            avatar_url: avatarUrl,
+            avatar_tipo: avatarTipo,
+            victorias: 0,
+            derrotas: 0,
+            empates: 0,
+            partidas: 0,
+            createdAt: Date.now()
+        });
+        usuarioActual = cred.user;
+        perfilActual  = await fetchPerfil(cred.user.uid);
         irAlLobby();
-        return;
+    } catch (err) {
+        mostrarError('authError', traducirError(err.code));
     }
-
-    pendingEmail = email;
-    mostrarPantalla('screenOtp');
-    document.getElementById('otpEmailLabel').textContent = email;
-}
-
-async function handleOtp(e) {
-    e.preventDefault();
-    const token = document.getElementById('otpInput').value.trim();
-    mostrarError('otpError', '');
-    const { data, error } = await supabase.auth.verifyOtp({ email: pendingEmail, token, type: 'signup' });
-    if (error) { mostrarError('otpError', 'Código incorrecto o expirado'); return; }
-    usuarioActual = data.user;
-    perfilActual = await fetchPerfil(data.user.id);
-    irAlLobby();
-}
-
-async function handleReenviarOtp() {
-    if (!pendingEmail) return;
-    await supabase.auth.resend({ type: 'signup', email: pendingEmail });
-    mostrarError('otpError', 'Código reenviado ✓');
+    setLoading('btnRegistro', false);
 }
 
 function irAlLobby() {
@@ -203,15 +206,15 @@ export function actualizarHeaderUsuario() {
 export async function cerrarSesion() {
     const btn = document.getElementById('btnSalir');
     if (btn) { btn.disabled = true; btn.textContent = '...'; }
-    try {
-        await supabase.auth.signOut();
-    } catch (e) {
-        console.warn('Error al cerrar sesión:', e);
-    }
+    try { await signOut(auth); } catch (e) { console.warn('Error al cerrar sesión:', e); }
     usuarioActual = null;
-    perfilActual = null;
+    perfilActual  = null;
     if (btn) { btn.disabled = false; btn.textContent = 'Salir'; }
     mostrarPantalla('screenAuth');
+}
+
+export async function cambiarPassword(nueva) {
+    await updatePassword(auth.currentUser, nueva);
 }
 
 function mostrarError(id, msg) {
@@ -222,14 +225,19 @@ function mostrarError(id, msg) {
 function setLoading(btnId, loading) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
-    btn.disabled = loading;
+    btn.disabled     = loading;
     btn.style.opacity = loading ? '0.7' : '1';
 }
 
-function traducirError(msg) {
-    if (msg.includes('Invalid login credentials')) return 'Correo o contraseña incorrectos';
-    if (msg.includes('Email not confirmed')) return 'Confirma tu correo antes de entrar';
-    if (msg.includes('User already registered')) return 'Este correo ya está registrado';
-    if (msg.includes('Password should be')) return 'La contraseña debe tener al menos 6 caracteres';
-    return msg;
+function traducirError(code) {
+    const map = {
+        'auth/invalid-credential':       'Correo o contraseña incorrectos',
+        'auth/user-not-found':           'Correo o contraseña incorrectos',
+        'auth/wrong-password':           'Correo o contraseña incorrectos',
+        'auth/email-already-in-use':     'Este correo ya está registrado',
+        'auth/weak-password':            'La contraseña debe tener al menos 6 caracteres',
+        'auth/invalid-email':            'Correo inválido',
+        'auth/too-many-requests':        'Demasiados intentos. Espera un momento',
+    };
+    return map[code] || code;
 }

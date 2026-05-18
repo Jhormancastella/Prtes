@@ -85,21 +85,6 @@ function screenAuth() {
 </div>`;
 }
 
-function screenOtp() {
-    return `
-<div class="screen" id="screenOtp">
-    <div class="otp-card">
-        <div class="otp-title">📧 Confirma tu correo</div>
-        <div class="otp-desc">Ingresa el código que enviamos a<br><strong id="otpEmailLabel"></strong></div>
-        <form id="formOtp">
-            <input type="text" id="otpInput" maxlength="6" placeholder="000000" inputmode="numeric" autocomplete="one-time-code">
-            <button type="submit" class="btn-primary">Verificar</button>
-        </form>
-        <button class="btn-secondary" id="btnReenviarOtp">Reenviar código</button>
-        <div class="auth-error" id="otpError" role="alert"></div>
-    </div>
-</div>`;
-}
 
 function screenLobby() {
     return `
@@ -259,7 +244,6 @@ function screenRanking() {
 export function montarUI() {
     document.body.insertAdjacentHTML('afterbegin',
         screenAuth() +
-        screenOtp() +
         screenLobby() +
         screenJuego() +
         screenPerfil() +
@@ -309,66 +293,62 @@ function iniciarTableroAnimado() {
     setTimeout(tick, 800);
 }
 
-// ── Top 3 y stats globales desde Supabase ────────────────────────────────────
+// ── Top 3 y stats globales desde Firebase ────────────────────────────────────
 async function cargarDatosPublicos() {
-    // Importación dinámica para no crear dependencia circular
-    const { supabase } = await import('./supabase.js');
+    const { db } = await import('./firebase.js');
+    const { collection, getDocs, query, orderBy, limit } =
+        await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
     // Top 3 jugadores
-    const { data: top } = await supabase
-        .from('perfiles')
-        .select('username, avatar_url, victorias')
-        .order('victorias', { ascending: false })
-        .limit(3);
+    try {
+        const q    = query(collection(db, 'perfiles'), orderBy('victorias', 'desc'), limit(3));
+        const snap = await getDocs(q);
+        const top  = snap.docs.map(d => d.data());
+        const lista = document.getElementById('authTop3Lista');
+        if (lista && top.length) {
+            const medallas = ['🥇','🥈','🥉'];
+            lista.innerHTML = top.map((p, i) => `
+                <div class="auth-top3-item">
+                    <span class="auth-top3-medal">${medallas[i]}</span>
+                    <img src="${p.avatar_url || 'https://api.dicebear.com/7.x/adventurer/svg?seed=default'}"
+                         class="auth-top3-avatar" alt="${p.username}">
+                    <span class="auth-top3-name">${p.username}</span>
+                    <span class="auth-top3-v">${p.victorias || 0}V</span>
+                </div>
+            `).join('');
+        } else if (lista) {
+            lista.innerHTML = '<div class="auth-top3-loading">Sé el primero en jugar</div>';
+        }
 
-    const lista = document.getElementById('authTop3Lista');
-    if (lista && top?.length) {
-        const medallas = ['🥇','🥈','🥉'];
-        lista.innerHTML = top.map((p, i) => `
-            <div class="auth-top3-item">
-                <span class="auth-top3-medal">${medallas[i]}</span>
-                <img src="${p.avatar_url || 'https://api.dicebear.com/7.x/adventurer/svg?seed=default'}"
-                     class="auth-top3-avatar" alt="${p.username}">
-                <span class="auth-top3-name">${p.username}</span>
-                <span class="auth-top3-v">${p.victorias || 0}V</span>
-            </div>
-        `).join('');
-    } else if (lista) {
-        lista.innerHTML = '<div class="auth-top3-loading">Sé el primero en jugar</div>';
-    }
+        // Stats globales
+        const perfilesSnap = await getDocs(collection(db, 'perfiles'));
+        const salasSnap    = await getDocs(collection(db, 'juegos'));
+        let totalPartidas  = 0;
+        salasSnap.forEach(d => {
+            const sc = d.data().scores || {};
+            totalPartidas += (sc.x || 0) + (sc.o || 0) + (sc.empate || 0);
+        });
 
-    // Stats globales: total jugadores + total partidas
-    const { count: totalJugadores } = await supabase
-        .from('perfiles')
-        .select('id', { count: 'exact', head: true });
-
-    const { data: salas } = await supabase
-        .from('juegos')
-        .select('scores');
-
-    let totalPartidas = 0;
-    (salas || []).forEach(s => {
-        const sc = s.scores || {};
-        totalPartidas += (sc.x || 0) + (sc.o || 0) + (sc.empate || 0);
-    });
-
-    const statsEl = document.getElementById('authStatsGlobales');
-    if (statsEl) {
-        statsEl.innerHTML = `
-            <div class="auth-stat-item">
-                <span class="auth-stat-val">${totalJugadores || 0}</span>
-                <span class="auth-stat-lbl">Jugadores</span>
-            </div>
-            <div class="auth-stat-sep">·</div>
-            <div class="auth-stat-item">
-                <span class="auth-stat-val">${totalPartidas}</span>
-                <span class="auth-stat-lbl">Partidas jugadas</span>
-            </div>
-            <div class="auth-stat-sep">·</div>
-            <div class="auth-stat-item">
-                <span class="auth-stat-val">6</span>
-                <span class="auth-stat-lbl">Salas activas</span>
-            </div>
-        `;
+        const statsEl = document.getElementById('authStatsGlobales');
+        if (statsEl) {
+            statsEl.innerHTML = `
+                <div class="auth-stat-item">
+                    <span class="auth-stat-val">${perfilesSnap.size}</span>
+                    <span class="auth-stat-lbl">Jugadores</span>
+                </div>
+                <div class="auth-stat-sep">·</div>
+                <div class="auth-stat-item">
+                    <span class="auth-stat-val">${totalPartidas}</span>
+                    <span class="auth-stat-lbl">Partidas jugadas</span>
+                </div>
+                <div class="auth-stat-sep">·</div>
+                <div class="auth-stat-item">
+                    <span class="auth-stat-val">6</span>
+                    <span class="auth-stat-lbl">Salas activas</span>
+                </div>
+            `;
+        }
+    } catch (e) {
+        console.warn('cargarDatosPublicos:', e);
     }
 }
